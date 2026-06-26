@@ -1,17 +1,43 @@
-#!/bin/sh -e
+#!/bin/sh -eu
 
-http_proxy="$(snapctl get proxy.http)"
-https_proxy="$(snapctl get proxy.https)"
-MULTIPASS_VM_DRIVER="$(snapctl get driver)"
+# Read proxy and driver settings from snap configuration.
+# If a setting is missing, we treat it as empty (no failure).
+http_proxy="$(snapctl get proxy.http 2>/dev/null || echo '')"
+https_proxy="$(snapctl get proxy.https 2>/dev/null || echo '')"
+no_proxy="$(snapctl get proxy.no_proxy 2>/dev/null || echo '')"
+vm_driver="$(snapctl get driver 2>/dev/null || echo '')"
 
+# Export standard and uppercase proxy variables (if set).
 if [ -n "$http_proxy" ]; then
     export http_proxy
+    export HTTP_PROXY="$http_proxy"
 fi
 
 if [ -n "$https_proxy" ]; then
     export https_proxy
+    export HTTPS_PROXY="$https_proxy"
 fi
 
-export MULTIPASS_VM_DRIVER
+if [ -n "$no_proxy" ]; then
+    export no_proxy
+    export NO_PROXY="$no_proxy"
+fi
 
+# Export the VM driver only if it was explicitly configured.
+if [ -n "$vm_driver" ]; then
+    export MULTIPASS_VM_DRIVER="$vm_driver"
+fi
+
+# Optional debug output (set MULTIPASS_DEBUG_ENV=1 to enable).
+if [ -n "${MULTIPASS_DEBUG_ENV:-}" ]; then
+    echo "multipassd wrapper: http_proxy=${http_proxy:-<unset>}, https_proxy=${https_proxy:-<unset>}, no_proxy=${no_proxy:-<unset>}, MULTIPASS_VM_DRIVER=${vm_driver:-<unset>}" >&2
+fi
+
+# Ensure the binary is present before attempting to execute it.
+if [ ! -x "$SNAP/bin/multipassd" ]; then
+    echo "Error: multipassd binary not found at $SNAP/bin/multipassd" >&2
+    exit 1
+fi
+
+# Launch multipassd with debug verbosity and any additional arguments.
 exec "$SNAP/bin/multipassd" --verbosity debug --logger platform "${@}"
